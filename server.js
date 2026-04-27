@@ -3,13 +3,20 @@ import { WebSocketServer } from "ws";
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("WebSocket server is running");
+    res.end("WebRTC Signaling Server Running");
 });
+
 const wss = new WebSocketServer({ server });
 
 const rooms = {};
 
 console.log("WebRTC Signaling Server Running...");
+
+function safeSend(socket, data) {
+    if (socket && socket.readyState === 1) {
+        socket.send(JSON.stringify(data));
+    }
+}
 
 wss.on("connection", (socket) => {
     console.log("Client connected");
@@ -24,6 +31,9 @@ wss.on("connection", (socket) => {
             return;
         }
 
+        // -------------------------
+        // JOIN ROOM
+        // -------------------------
         if (msg.type === "join") {
             const room = msg.room;
 
@@ -34,70 +44,80 @@ wss.on("connection", (socket) => {
                 };
             }
 
+            socket.room = room;
+
             console.log("Join request:", msg);
 
             // -------------------------
-            // HOST LOGIC
+            // HOST
             // -------------------------
             if (msg.is_host) {
                 rooms[room].host = socket;
-
-                socket.room = room;
                 socket.role = "host";
 
-                socket.send(JSON.stringify({
-                    type: "join_ack"
-                }));
+                safeSend(socket, {
+                    type: "join_ack",
+                    room
+                });
 
-                console.log("Host joined room:", room);
+                console.log("Host joined:", room);
             }
 
             // -------------------------
-            // CLIENT LOGIC
+            // CLIENT
             // -------------------------
             else {
                 rooms[room].client = socket;
-
-                socket.room = room;
                 socket.role = "client";
 
-                socket.send(JSON.stringify({
-                    type: "room_info"
-                }));
+                safeSend(socket, {
+                    type: "room_info",
+                    room
+                });
 
-                console.log("Client joined room:", room);
+                console.log("Client joined:", room);
+
+                // OPTIONAL: notify host client is ready
+                if (rooms[room].host) {
+                    safeSend(rooms[room].host, {
+                        type: "peer_joined"
+                    });
+                }
             }
 
             return;
         }
 
         // -------------------------
-        // SIGNAL RELAY (for WebRTC later)
+        // SIGNAL RELAY (WebRTC)
         // -------------------------
         if (msg.type === "signal") {
             const room = socket.room;
 
             if (!room || !rooms[room]) return;
 
+            const roomData = rooms[room];
+
             const target =
                 socket.role === "host"
-                    ? rooms[room].client
-                    : rooms[room].host;
+                    ? roomData.client
+                    : roomData.host;
 
-            if (target && target.readyState === 1) {
-                target.send(JSON.stringify({
+            if (target) {
+                safeSend(target, {
                     type: "signal",
                     data: msg.data
-                }));
+                });
             }
         }
     });
 
     socket.on("close", () => {
-        console.log("Client disconnected");
-
         const room = socket.room;
+
         if (!room || !rooms[room]) return;
+
+        console.log("Client disconnected");
 
         if (rooms[room].host === socket) {
             rooms[room].host = null;
@@ -107,6 +127,7 @@ wss.on("connection", (socket) => {
             rooms[room].client = null;
         }
 
+        // cleanup empty rooms
         if (!rooms[room].host && !rooms[room].client) {
             delete rooms[room];
             console.log("Room deleted:", room);
@@ -115,7 +136,6 @@ wss.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
 
 server.listen(PORT, "0.0.0.0", () => {
     console.log("Server listening on port", PORT);
