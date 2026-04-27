@@ -2,7 +2,6 @@ import { WebSocketServer } from "ws";
 // core modules
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
 
 const app = express();
 
@@ -10,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 
 // attach WebSocket to that server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 // store rooms
 let rooms = {};
