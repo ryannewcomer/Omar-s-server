@@ -18,18 +18,6 @@ function safeSend(socket, data) {
     }
 }
 
-function checkStart(room) {
-    const r = rooms[room];
-    if (!r) return;
-
-    if (r.host && r.client) {
-        console.log("Both players ready in room:", room);
-
-        safeSend(r.host, { type: "start_game" });
-        safeSend(r.client, { type: "start_game" });
-    }
-}
-
 wss.on("connection", (socket) => {
     console.log("Client connected");
 
@@ -57,45 +45,55 @@ wss.on("connection", (socket) => {
 
             socket.room = room;
 
-            console.log("Join request:", msg);
-
             if (msg.is_host) {
                 rooms[room].host = socket;
                 socket.role = "host";
 
-                safeSend(socket, {
-                    type: "join_ack",
-                    room
-                });
+                safeSend(socket, { type: "join_ack" });
 
                 console.log("Host joined:", room);
             } else {
                 rooms[room].client = socket;
                 socket.role = "client";
 
-                safeSend(socket, {
-                    type: "room_info",
-                    room
-                });
+                safeSend(socket, { type: "room_info" });
 
                 console.log("Client joined:", room);
             }
 
-            checkStart(room);
             return;
         }
 
         // -------------------------
-        // SIGNAL RELAY
+        // START GAME (HOST CONTROLLED)
+        // -------------------------
+        if (msg.type === "start_game") {
+            const room = socket.room;
+            if (!room || !rooms[room]) return;
+
+            console.log("START GAME in room:", room);
+
+            const r = rooms[room];
+
+            safeSend(r.host, { type: "start_game" });
+            safeSend(r.client, { type: "start_game" });
+
+            return;
+        }
+
+        // -------------------------
+        // SIGNAL RELAY (WebRTC)
         // -------------------------
         if (msg.type === "signal") {
             const room = socket.room;
             if (!room || !rooms[room]) return;
 
+            const r = rooms[room];
+
             const target =
                 socket.role === "host"
-                    ? rooms[room].client
-                    : rooms[room].host;
+                    ? r.client
+                    : r.host;
 
             safeSend(target, {
                 type: "signal",
