@@ -1,73 +1,117 @@
+import http from "http";
 import { WebSocketServer } from "ws";
-// core modules
-const express = require("express");
-const http = require("http");
 
-const app = express();
-
-// create ONE HTTP server for both Express and WS
-const server = http.createServer(app);
-
-// attach WebSocket to that server
+const server = http.createServer();
 const wss = new WebSocketServer({ server });
 
-// store rooms
-let rooms = {};
+const rooms = {};
 
-// WebSocket logic
-wss.on("connection", (ws) => {
+console.log("WebRTC Signaling Server Running...");
 
-    ws.on("message", (msg) => {
-        let data;
+wss.on("connection", (socket) => {
+    console.log("Client connected");
+
+    socket.on("message", (raw) => {
+        let msg;
 
         try {
-            data = JSON.parse(msg);
-        } catch {
+            msg = JSON.parse(raw);
+        } catch (e) {
+            console.log("Invalid JSON:", raw.toString());
             return;
         }
 
-        // join room
-        if (data.type === "join") {
-            ws.room = data.room;
+        if (msg.type === "join") {
+            const room = msg.room;
 
-            if (!rooms[data.room]) {
-                rooms[data.room] = [];
+            if (!rooms[room]) {
+                rooms[room] = {
+                    host: null,
+                    client: null
+                };
             }
 
-            if (!rooms[data.room].includes(ws)) {
-                rooms[data.room].push(ws);
+            console.log("Join request:", msg);
+
+            // -------------------------
+            // HOST LOGIC
+            // -------------------------
+            if (msg.is_host) {
+                rooms[room].host = socket;
+
+                socket.room = room;
+                socket.role = "host";
+
+                socket.send(JSON.stringify({
+                    type: "join_ack"
+                }));
+
+                console.log("Host joined room:", room);
             }
+
+            // -------------------------
+            // CLIENT LOGIC
+            // -------------------------
+            else {
+                rooms[room].client = socket;
+
+                socket.room = room;
+                socket.role = "client";
+
+                socket.send(JSON.stringify({
+                    type: "room_info"
+                }));
+
+                console.log("Client joined room:", room);
+            }
+
+            return;
         }
 
-        // send signal to others
-        if (data.type === "signal") {
-            const room = rooms[ws.room] || [];
+        // -------------------------
+        // SIGNAL RELAY (for WebRTC later)
+        // -------------------------
+        if (msg.type === "signal") {
+            const room = socket.room;
 
-            room.forEach(client => {
-                if (client !== ws && client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(data));
-                }
-            });
+            if (!room || !rooms[room]) return;
+
+            const target =
+                socket.role === "host"
+                    ? rooms[room].client
+                    : rooms[room].host;
+
+            if (target && target.readyState === 1) {
+                target.send(JSON.stringify({
+                    type: "signal",
+                    data: msg.data
+                }));
+            }
         }
     });
 
-    ws.on("close", () => {
-        if (ws.room && rooms[ws.room]) {
-            rooms[ws.room] = rooms[ws.room].filter(c => c !== ws);
+    socket.on("close", () => {
+        console.log("Client disconnected");
 
-            if (rooms[ws.room].length === 0) {
-                delete rooms[ws.room];
-            }
+        const room = socket.room;
+        if (!room || !rooms[room]) return;
+
+        if (rooms[room].host === socket) {
+            rooms[room].host = null;
+        }
+
+        if (rooms[room].client === socket) {
+            rooms[room].client = null;
+        }
+
+        if (!rooms[room].host && !rooms[room].client) {
+            delete rooms[room];
+            console.log("Room deleted:", room);
         }
     });
 });
 
-// normal Express route
-app.get("/", (req, res) => {
-    res.send("Express is working");
-});
-
-// start server (both HTTP + WS)
-server.listen(3000, () => {
-    console.log("Server running on http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log("Server listening on port", PORT);
 });
