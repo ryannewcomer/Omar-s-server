@@ -18,6 +18,18 @@ function safeSend(socket, data) {
     }
 }
 
+function checkStart(room) {
+    const r = rooms[room];
+    if (!r) return;
+
+    if (r.host && r.client) {
+        console.log("Both players ready in room:", room);
+
+        safeSend(r.host, { type: "start_game" });
+        safeSend(r.client, { type: "start_game" });
+    }
+}
+
 wss.on("connection", (socket) => {
     console.log("Client connected");
 
@@ -26,8 +38,7 @@ wss.on("connection", (socket) => {
 
         try {
             msg = JSON.parse(raw.toString());
-        } catch (e) {
-            console.log("Invalid JSON:", raw.toString());
+        } catch {
             return;
         }
 
@@ -48,9 +59,6 @@ wss.on("connection", (socket) => {
 
             console.log("Join request:", msg);
 
-            // -------------------------
-            // HOST
-            // -------------------------
             if (msg.is_host) {
                 rooms[room].host = socket;
                 socket.role = "host";
@@ -61,12 +69,7 @@ wss.on("connection", (socket) => {
                 });
 
                 console.log("Host joined:", room);
-            }
-
-            // -------------------------
-            // CLIENT
-            // -------------------------
-            else {
+            } else {
                 rooms[room].client = socket;
                 socket.role = "client";
 
@@ -76,58 +79,38 @@ wss.on("connection", (socket) => {
                 });
 
                 console.log("Client joined:", room);
-
-                // OPTIONAL: notify host client is ready
-                if (rooms[room].host) {
-                    safeSend(rooms[room].host, {
-                        type: "peer_joined"
-                    });
-                }
             }
 
+            checkStart(room);
             return;
         }
 
         // -------------------------
-        // SIGNAL RELAY (WebRTC)
+        // SIGNAL RELAY
         // -------------------------
         if (msg.type === "signal") {
             const room = socket.room;
-
             if (!room || !rooms[room]) return;
-
-            const roomData = rooms[room];
 
             const target =
                 socket.role === "host"
-                    ? roomData.client
-                    : roomData.host;
+                    ? rooms[room].client
+                    : rooms[room].host;
 
-            if (target) {
-                safeSend(target, {
-                    type: "signal",
-                    data: msg.data
-                });
-            }
+            safeSend(target, {
+                type: "signal",
+                data: msg.data
+            });
         }
     });
 
     socket.on("close", () => {
         const room = socket.room;
-
         if (!room || !rooms[room]) return;
 
-        console.log("Client disconnected");
+        if (rooms[room].host === socket) rooms[room].host = null;
+        if (rooms[room].client === socket) rooms[room].client = null;
 
-        if (rooms[room].host === socket) {
-            rooms[room].host = null;
-        }
-
-        if (rooms[room].client === socket) {
-            rooms[room].client = null;
-        }
-
-        // cleanup empty rooms
         if (!rooms[room].host && !rooms[room].client) {
             delete rooms[room];
             console.log("Room deleted:", room);
@@ -136,7 +119,6 @@ wss.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, "0.0.0.0", () => {
     console.log("Server listening on port", PORT);
 });
