@@ -1,7 +1,10 @@
 import http from "http";
 import { WebSocketServer } from "ws";
 
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("WebSocket server is running");
+});
 const wss = new WebSocketServer({ server });
 
 const rooms = {};
@@ -114,12 +117,6 @@ wss.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 
 
-// basic http responce
-//
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("WebSocket server is running");
-});
 server.listen(PORT, "0.0.0.0", () => {
     console.log("Server listening on port", PORT);
 });
