@@ -1,3 +1,4 @@
+import { WebSocketServer } from "ws";
 // core modules
 const express = require("express");
 const http = require("http");
