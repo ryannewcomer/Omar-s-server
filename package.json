@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "server for Omar's game",
+  "homepage": "https://github.com/ryannewcomer/Omar-s-server#readme",
+  "bugs": {
+    "url": "https://github.com/ryannewcomer/Omar-s-server/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryannewcomer/Omar-s-server.git"
+  },
+  "license": "ISC",
+  "author": "Ryan",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
