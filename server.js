@@ -15,7 +15,7 @@ wss.on("connection", (socket) => {
         let msg;
 
         try {
-            msg = JSON.parse(raw);
+            msg = JSON.parse(raw.toString());
         } catch (e) {
             console.log("Invalid JSON:", raw.toString());
             return;
@@ -112,6 +112,14 @@ wss.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+
+
+// basic http responce
+//
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("WebSocket server is running");
+});
+server.listen(PORT, "0.0.0.0", () => {
     console.log("Server listening on port", PORT);
 });
