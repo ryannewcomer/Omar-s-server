@@ -1,122 +1,50 @@
-import http from "http";
-import { WebSocketServer } from "ws";
+const express = require("express");
+const app = express();
 
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("WebRTC Signaling Server Running");
-});
+app.use(express.json());
 
-const wss = new WebSocketServer({ server });
-
+// roomCode → { ip, port }
 const rooms = {};
 
-console.log("WebRTC Signaling Server Running...");
+// HOST registers room
+app.post("/host", (req, res) => {
+  const { room, ip, port } = req.body;
 
-function safeSend(socket, data) {
-    if (socket && socket.readyState === 1) {
-        socket.send(JSON.stringify(data));
-    }
-}
+  if (!room || !ip || !port) {
+    return res.json({ ok: false });
+  }
 
-wss.on("connection", (socket) => {
-    console.log("Client connected");
+  rooms[room] = { ip, port };
 
-    socket.on("message", (raw) => {
-        let msg;
+  console.log("HOST:", room, ip + ":" + port);
 
-        try {
-            msg = JSON.parse(raw.toString());
-        } catch {
-            return;
-        }
-
-        // -------------------------
-        // JOIN ROOM
-        // -------------------------
-        if (msg.type === "join") {
-            const room = msg.room;
-
-            if (!rooms[room]) {
-                rooms[room] = {
-                    host: null,
-                    client: null
-                };
-            }
-
-            socket.room = room;
-
-            if (msg.is_host) {
-                rooms[room].host = socket;
-                socket.role = "host";
-
-                safeSend(socket, { type: "join_ack" });
-
-                console.log("Host joined:", room);
-            } else {
-                rooms[room].client = socket;
-                socket.role = "client";
-
-                safeSend(socket, { type: "room_info" });
-
-                console.log("Client joined:", room);
-            }
-
-            return;
-        }
-
-        // -------------------------
-        // START GAME (HOST CONTROLLED)
-        // -------------------------
-        if (msg.type === "start_game") {
-            const room = socket.room;
-            if (!room || !rooms[room]) return;
-
-            console.log("START GAME in room:", room);
-
-            const r = rooms[room];
-
-            safeSend(r.host, { type: "start_game" });
-            safeSend(r.client, { type: "start_game" });
-
-            return;
-        }
-
-        // -------------------------
-        // SIGNAL RELAY (WebRTC)
-        // -------------------------
-        if (msg.type === "signal") {
-            const room = socket.room;
-            if (!room || !rooms[room]) return;
-
-            const r = rooms[room];
-
-            const target =
-                socket.role === "host"
-                    ? r.client
-                    : r.host;
-
-            safeSend(target, {
-                type: "signal",
-                data: msg.data
-            });
-        }
-    });
-
-    socket.on("close", () => {
-        const room = socket.room;
-        if (!room || !rooms[room]) return;
-
-        if (rooms[room].host === socket) rooms[room].host = null;
-        if (rooms[room].client === socket) rooms[room].client = null;
-
-        if (!rooms[room].host && !rooms[room].client) {
-            delete rooms[room];
-            console.log("Room deleted:", room);
-        }
-    });
+  res.json({ ok: true });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => {
-    console.log("Server listening on port", PORT);
+// JOIN fetches host info
+app.get("/join/:room", (req, res) => {
+  const room = req.params.room;
+
+  const data = rooms[room];
+
+  if (!data) {
+    return res.json({ ok: false });
+  }
+
+  res.json({
+    ok: true,
+    ip: data.ip,
+    port: data.port
+  });
+});
+
+// optional cleanup
+app.post("/remove", (req, res) => {
+  const { room } = req.body;
+  delete rooms[room];
+  res.json({ ok: true });
+});
+
+app.listen(3000, () => {
+  console.log("Lobby server running on port 3000");
 });
